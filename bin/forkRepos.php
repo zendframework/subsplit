@@ -11,7 +11,7 @@ $client->setOptions(array(
     'adapter' => 'Zend\Http\Client\Adapter\Curl',
 ));
 
-$token   = include __DIR__ . '/cache/github.token';
+$token   = file_get_contents(__DIR__ . '/../cache/github.token');
 $token   = trim($token);
 
 $base    = 'https://api.github.com';

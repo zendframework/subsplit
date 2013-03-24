@@ -1,4 +1,5 @@
 {
+    "minimum-stability": "dev",
     "require": {
         "zendframework/zend-http": ">=2.1.4"
     }
