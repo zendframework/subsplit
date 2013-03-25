@@ -58,18 +58,13 @@ foreach ($branches as $branch) {
     $components   = getComponentsFromDiff($diff);
     $subsplitList = createSubsplitList($components);
 
-    echo "Performing subtree split on branch $branch...\n";
-    $command = sprintf(
-        '/usr/local/bin/git subsplit publish "%s" --update --heads="%s" --no-tags 2>&1 | tee publish.log',
-        implode(' ', $subsplitList),
-        $branch
-    );
-    system($command);
-    echo "\nDONE\n";
+    if (empty($subsplitList)) {
+        echo "No updates found on $branch\n";
+        continue;
+    }
 
-    echo "Removing subtree cache...\n";
-    $command = sprintf('rm -rf %s/.subsplit/.git/subtree-cache', realpath(getcwd()));
-    system($command);
+    echo "Performing subtree split on branch $branch...\n";
+    performSubsplit($branch, $subsplitList);
     echo "\nDONE\n";
 
     echo "Updating last update SHA...";
@@ -144,4 +139,32 @@ function createSubsplitList($components)
         );
     }
     return $subsplits;
+}
+
+function performSubsplit($branch, $subsplitList)
+{
+    $command = sprintf(
+        '/usr/local/bin/git subsplit publish "%s" --update --heads="%s" --no-tags 2>&1 | tee publish.log',
+        implode(' ', $subsplitList),
+        $branch
+    );
+
+    passthru($command, $return);
+    if (0 != $return) {
+        throw new RuntimeException(sprintf(
+            "Error executing subsplit\nCommand executed: %s\n\nReturn value: %s\n\nSubtree cache was NOT flushed.\n",
+            $command,
+            $return
+        ));
+    }
+
+    $command = sprintf('rm -rf %s/.subsplit/.git/subtree-cache', realpath(getcwd()));
+    passthru($command);
+
+    if (0 != $return) {
+        throw new RuntimeException(sprintf(
+            "Error flushing subtree cache; return status was '%s'.\n",
+            $return
+        ));
+    }
 }
