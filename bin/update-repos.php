@@ -29,8 +29,20 @@ chdir(__DIR__ . '/../');
 
 require 'vendor/autoload.php';
 
-$token  = file_get_contents(realpath(getcwd()) . '/cache/github.token');
+$tokenPath = realpath(getcwd()) . '/cache/github.token';
+if (!file_exists($tokenPath)) {
+    echo "Missing github token file; please place your github token in '$tokenPath'\n";
+    exit(2);
+}
+$token  = file_get_contents($tokenPath);
 $token  = trim($token);
+
+$git     = 'git';
+$gitPath = realpath(getcwd()) . '/cache/git.path';
+if (file_exists($gitPath)) {
+    $git = file_get_contents($gitPath);
+    $git = trim($git);
+}
 
 $branches = ['master', 'develop'];
 
@@ -64,7 +76,7 @@ foreach ($branches as $branch) {
     }
 
     echo "Performing subtree split on branch $branch...\n";
-    performSubsplit($branch, $subsplitList);
+    performSubsplit($branch, $subsplitList, $git);
     echo "\nDONE\n";
 
     echo "Updating last update SHA...";
@@ -100,6 +112,8 @@ function getLastSha($branch)
 
 function updateLastSha($branch, $sha)
 {
+echo "UPDATING branch $branch to SHA $sha\n";
+return;
     $lastUpdateShaFile = __DIR__ . '/../cache/' . $branch . '.sha';
     file_put_contents($lastUpdateShaFile, $sha);
 }
@@ -141,14 +155,17 @@ function createSubsplitList($components)
     return $subsplits;
 }
 
-function performSubsplit($branch, $subsplitList)
+function performSubsplit($branch, $subsplitList, $git)
 {
+    $return  = 0;
     $command = sprintf(
-        '/usr/local/bin/git subsplit publish "%s" --update --heads="%s" --no-tags 2>&1 | tee publish.log',
+        '%s subsplit publish "%s" --update --heads="%s" --no-tags 2>&1',
+        $git,
         implode(' ', $subsplitList),
         $branch
     );
 
+    echo "EXECUTING:\n$command\n";
     passthru($command, $return);
     if (0 != $return) {
         throw new RuntimeException(sprintf(
@@ -159,6 +176,7 @@ function performSubsplit($branch, $subsplitList)
     }
 
     $command = sprintf('rm -rf %s/.subsplit/.git/subtree-cache', realpath(getcwd()));
+    echo "EXECUTING:\n$command\n";
     passthru($command);
 
     if (0 != $return) {
