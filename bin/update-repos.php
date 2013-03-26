@@ -79,7 +79,7 @@ foreach ($branches as $branch) {
     performSubsplit($branch, $subsplitList, $git);
     echo "\nDONE\n";
 
-    echo "Updating last update SHA...";
+    echo "Updating last update SHA '$currentSha'...";
     updateLastSha($branch, $currentSha);
     echo "DONE\n";
 }
@@ -112,8 +112,6 @@ function getLastSha($branch)
 
 function updateLastSha($branch, $sha)
 {
-echo "UPDATING branch $branch to SHA $sha\n";
-return;
     $lastUpdateShaFile = __DIR__ . '/../cache/' . $branch . '.sha';
     file_put_contents($lastUpdateShaFile, $sha);
 }
