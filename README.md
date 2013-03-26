@@ -41,5 +41,8 @@ You will need to create the following files in `cache/`:
   against the develop branch.
 - `github.token`, with the GitHub API token you will use; make sure it has
   rights against the zendframework repository.
+- `git.path`, **optional**; if present, should provide the filesystem path to
+  the `git` executable. (Useful if using the `hub` command but running the
+  process in a cronjob.)
 
 These files are intentionally left out of version control.
