@@ -62,7 +62,7 @@ foreach ($branches as $branch) {
     $response = queryGithub($base . '/repos/zendframework/zf2/branches/' . $branch, $client);
     $currentSha = $response->commit->sha;
     if ($currentSha === $lastUpdateSha) {
-        echo "No updates found on $branch\n";
+        echo date('[Y-m-d H:i:s] ') . "No updates found on $branch\n";
         continue;
     }
 
@@ -71,15 +71,15 @@ foreach ($branches as $branch) {
     $subsplitList = createSubsplitList($components);
 
     if (empty($subsplitList)) {
-        echo "No updates found on $branch\n";
+        echo date('[Y-m-d H:i:s] ') . "No updates found on $branch\n";
         continue;
     }
 
-    echo "Performing subtree split on branch $branch...\n";
+    echo date('[Y-m-d H:i:s] ') . "Performing subtree split on branch $branch...\n";
     performSubsplit($branch, $subsplitList, $git);
     echo "\nDONE\n";
 
-    echo "Updating last update SHA '$currentSha'...";
+    echo date('[Y-m-d H:i:s] ') . "Updating last update SHA '$currentSha'...";
     updateLastSha($branch, $currentSha);
     echo "DONE\n";
 }
@@ -102,7 +102,7 @@ function getLastSha($branch)
 {
     $lastUpdateShaFile = __DIR__ . '/../cache/' . $branch . '.sha';
     if (!file_exists($lastUpdateShaFile)) {
-        echo "Unable to find last cache file with last update SHA for $branch; please seed this file and re-run";
+        echo date('[Y-m-d H:i:s] ') . "Unable to find last cache file with last update SHA for $branch; please seed this file and re-run";
         exit(2);
     }
     $lastUpdateSha = file_get_contents($lastUpdateShaFile);
@@ -163,7 +163,7 @@ function performSubsplit($branch, $subsplitList, $git)
         $branch
     );
 
-    echo "EXECUTING:\n$command\n";
+    echo date('[Y-m-d H:i:s] ') . "EXECUTING:\n$command\n";
     passthru($command, $return);
     if (0 != $return) {
         throw new RuntimeException(sprintf(
@@ -174,7 +174,7 @@ function performSubsplit($branch, $subsplitList, $git)
     }
 
     $command = sprintf('rm -rf %s/.subsplit/.git/subtree-cache', realpath(getcwd()));
-    echo "EXECUTING:\n$command\n";
+    echo date('[Y-m-d H:i:s] ') . "EXECUTING:\n$command\n";
     passthru($command);
 
     if (0 != $return) {
