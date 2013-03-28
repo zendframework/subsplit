@@ -29,14 +29,18 @@ chdir(__DIR__ . '/../');
 
 require 'vendor/autoload.php';
 
+// GitHub token is required
 $tokenPath = realpath(getcwd()) . '/cache/github.token';
 if (!file_exists($tokenPath)) {
-    echo "Missing github token file; please place your github token in '$tokenPath'\n";
-    exit(2);
+    exitWithError(
+        "Missing github token file; please place your github token in '%s'.",
+        [$tokenPath]
+    );
 }
 $token  = file_get_contents($tokenPath);
 $token  = trim($token);
 
+// Check to see if an alternate path to the git executable has been provided
 $git     = 'git';
 $gitPath = realpath(getcwd()) . '/cache/git.path';
 if (file_exists($gitPath)) {
@@ -44,32 +48,48 @@ if (file_exists($gitPath)) {
     $git = trim($git);
 }
 
-$branches = ['master', 'develop'];
+// Don't run at all if subtree-cache dir is still around; means another job is 
+// running, or failed previously
+$subtreeCacheDir = realpath(getcwd()) . '/.subsplit/.git/subtree-cache';
+if (file_exists($subtreeCacheDir) && is_dir($subtreeCacheDir)) {
+    exitWithError("Previous execution is still running or failed before cleanup.");
+}
 
+// Initialize HTTP client
+// - set authorization token
+// - set accept header
 $client = new Zend\Http\Client();
 $client->setOptions(array(
     'adapter' => 'Zend\Http\Client\Adapter\Curl',
 ));
-
-$base    = 'https://api.github.com';
 $request = $client->getRequest();
 $headers = $request->getHeaders();
 $headers->addHeaderLine("Authorization", "token $token");
 $headers->addHeaderLine('Accept', 'application/json');
 
-foreach ($branches as $branch) {
+// Setup base URI for GitHub API requests
+$base    = 'https://api.github.com';
+
+// For each branch, do the work
+foreach (['master', 'develop'] as $branch) {
+    // Get SHA from last run, as well as most recent SHA for branch from GitHub
     $lastUpdateSha = getLastSha($branch);
-    $response = queryGithub($base . '/repos/zendframework/zf2/branches/' . $branch, $client);
-    $currentSha = $response->commit->sha;
+    $response      = queryGithub($base . '/repos/zendframework/zf2/branches/' . $branch, $client);
+    $currentSha    = $response->commit->sha;
     if ($currentSha === $lastUpdateSha) {
+        // Most current is same as last run; nothing to do on this branch
         echo date('[Y-m-d H:i:s] ') . "No updates found on $branch\n";
         continue;
     }
 
+    // Get a list of components affected by commits since the last update, and 
+    // build the list of components for which to update subsplits
     $diff         = queryGithub(sprintf('%s/repos/zendframework/zf2/compare/%s...%s', $base, $lastUpdateSha, $currentSha), $client);
     $components   = getComponentsFromDiff($diff);
     $subsplitList = createSubsplitList($components);
 
+    // No components found? (e.g., only tests were changed)
+    // Done with this branch.
     if (empty($subsplitList)) {
         echo date('[Y-m-d H:i:s] ') . "No updates found on $branch\n";
         continue;
@@ -84,6 +104,15 @@ foreach ($branches as $branch) {
     echo "DONE\n";
 }
 
+/**
+ * Query the GitHub API
+ *
+ * Exits with status 2 if the query fails, and echos an error message.
+ * 
+ * @param  string $uri 
+ * @param  Zend\Http\Client $client 
+ * @return array
+ */
 function queryGithub($uri, $client)
 {
     $client->setUri($uri);
@@ -92,30 +121,61 @@ function queryGithub($uri, $client)
     $body = $response->getBody();
     $payload = json_decode($body);
     if (!$response->isOk()) {
-        printf("Error requesting %s (status code %s):\n%s", $uri, $response->getStatusCode(), var_export($payload, 1));
-        exit(2);
+        exitWithError(
+            "Error requesting %s (status code %s):\n%s",
+            [$uri, $response->getStatusCode(), var_export($payload, 1)]
+        );
     }
     return $payload;
 }
 
+/**
+ * Retrieve the SHA from the previous job execution
+ *
+ * Looks in the "cache/{branch}.sha" for a SHA file, returning the SHA when
+ * found. If none is found, exits with status 2 and echos an error message.
+ * 
+ * @param  string $branch 
+ * @return string
+ */
 function getLastSha($branch)
 {
     $lastUpdateShaFile = __DIR__ . '/../cache/' . $branch . '.sha';
     if (!file_exists($lastUpdateShaFile)) {
-        echo date('[Y-m-d H:i:s] ') . "Unable to find last cache file with last update SHA for $branch; please seed this file and re-run";
-        exit(2);
+        exitWithError(
+            "Unable to find last cache file with last update SHA for %s; please seed this file and re-run.",
+            [$branch]
+        );
     }
     $lastUpdateSha = file_get_contents($lastUpdateShaFile);
     $lastUpdateSha = trim($lastUpdateSha);
     return $lastUpdateSha;
 }
 
+/**
+ * Writes the current SHA to a cache file
+ *
+ * Writes the SHA for the branch to "cache/{branch}.sha".
+ * 
+ * @param  string $branch 
+ * @param  string $sha 
+ */
 function updateLastSha($branch, $sha)
 {
     $lastUpdateShaFile = __DIR__ . '/../cache/' . $branch . '.sha';
     file_put_contents($lastUpdateShaFile, $sha);
 }
 
+/**
+ * Retrieve a list of affected components from a GitHub diff response
+ *
+ * Loops through the "files" member of a GitHub diff; if the "filename" member
+ * of any given file is a file inside the library, it determines the component
+ * affected, and adds it to the list it returns.
+ * 
+ * @param  stdClass $diff 
+ * @return array
+ */
 function getComponentsFromDiff($diff)
 {
     $components = [];
@@ -140,7 +200,13 @@ function getComponentsFromDiff($diff)
     return $components;
 }
 
-function createSubsplitList($components)
+/**
+ * Creates a list of component/repository strings for use with git subsplit
+ * 
+ * @param  array $components 
+ * @return array
+ */
+function createSubsplitList(array $components)
 {
     $subsplits = [];
     foreach ($components as $component) {
@@ -153,6 +219,23 @@ function createSubsplitList($components)
     return $subsplits;
 }
 
+/**
+ * Executes a subsplit
+ *
+ * Given a branch, a list of components, and the git executable, executes a git
+ * subsplit, and cleans up after itself when done.
+ *
+ * A message with the timestamp and the command executed is echo'd for each of
+ * the subsplit performed as well as the "rm -rf" executed on the subtree-cache
+ * when complete.
+ *
+ * If either command returns a non-zero status, an error message is echo'd, and
+ * the script will exit with a status of 2.
+ * 
+ * @param string $branch 
+ * @param array $subsplitList 
+ * @param string $git 
+ */
 function performSubsplit($branch, $subsplitList, $git)
 {
     $return  = 0;
@@ -166,11 +249,10 @@ function performSubsplit($branch, $subsplitList, $git)
     echo date('[Y-m-d H:i:s] ') . "EXECUTING:\n$command\n";
     passthru($command, $return);
     if (0 != $return) {
-        throw new RuntimeException(sprintf(
-            "Error executing subsplit\nCommand executed: %s\n\nReturn value: %s\n\nSubtree cache was NOT flushed.\n",
-            $command,
-            $return
-        ));
+        exitWithError(
+            "Error executing subsplit\nCommand executed: %s\n\nReturn value: %s\n\nSubtree cache was NOT flushed.",
+            [$command, $return]
+        );
     }
 
     $command = sprintf('rm -rf %s/.subsplit/.git/subtree-cache', realpath(getcwd()));
@@ -178,9 +260,23 @@ function performSubsplit($branch, $subsplitList, $git)
     passthru($command);
 
     if (0 != $return) {
-        throw new RuntimeException(sprintf(
-            "Error flushing subtree cache; return status was '%s'.\n",
-            $return
-        ));
+        exitWithError(
+            "Error flushing subtree cache; return status was '%s'.",
+            [$return]
+        );
     }
+}
+
+/**
+ * Exit with error status 2, and provide a message
+ * 
+ * @param string $message 
+ * @param array $params 
+ */
+function exitWithError($message, array $params = [])
+{
+    $message = '[%s] ' . $message . "\n";
+    array_unshift($params, date('Y-m-d H:i:s'));
+    vprintf($message, $params);
+    exit(2);
 }
