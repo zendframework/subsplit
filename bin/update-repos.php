@@ -189,7 +189,7 @@ function getComponentsFromDiff($diff)
         $subcomponent = $matches['subcomponent'];
 
         if ($component == 'Permissions') {
-            $component = printf('%s/%s', $component, $subcomponent);
+            $component = sprintf('%s/%s', $component, $subcomponent);
         }
 
         if (in_array($component, $components)) {
@@ -258,7 +258,6 @@ function performSubsplit($branch, $subsplitList, $git)
     $command = sprintf('rm -rf %s/.subsplit/.git/subtree-cache', realpath(getcwd()));
     emitMessage("EXECUTING:\n%s", [$command]);
     passthru($command);
-
     if (0 != $return) {
         exitWithError(
             "Error flushing subtree cache; return status was '%s'.",
