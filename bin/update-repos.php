@@ -78,7 +78,7 @@ foreach (['master', 'develop'] as $branch) {
     $currentSha    = $response->commit->sha;
     if ($currentSha === $lastUpdateSha) {
         // Most current is same as last run; nothing to do on this branch
-        echo date('[Y-m-d H:i:s] ') . "No updates found on $branch\n";
+        emitMessage('No updates found on %s', [$branch]);
         continue;
     }
 
@@ -91,17 +91,17 @@ foreach (['master', 'develop'] as $branch) {
     // No components found? (e.g., only tests were changed)
     // Done with this branch.
     if (empty($subsplitList)) {
-        echo date('[Y-m-d H:i:s] ') . "No updates found on $branch\n";
+        emitMessage('No updates found on %s', [$branch]);
         continue;
     }
 
-    echo date('[Y-m-d H:i:s] ') . "Performing subtree split on branch $branch...\n";
+    emitMessage('Performing subtree split on branch %s...', [$branch]);
     performSubsplit($branch, $subsplitList, $git);
-    echo "\nDONE\n";
+    emitMessage('DONE (performing subtree split)');
 
-    echo date('[Y-m-d H:i:s] ') . "Updating last update SHA '$currentSha'...";
+    emitMessage('Updating last update SHA on branch %s to %s', [$branch, $currentSha]);
     updateLastSha($branch, $currentSha);
-    echo "DONE\n";
+    emitMessage('DONE (updating last update SHA)');
 }
 
 /**
@@ -246,7 +246,7 @@ function performSubsplit($branch, $subsplitList, $git)
         $branch
     );
 
-    echo date('[Y-m-d H:i:s] ') . "EXECUTING:\n$command\n";
+    emitMessage("EXECUTING:\n%s", [$command]);
     passthru($command, $return);
     if (0 != $return) {
         exitWithError(
@@ -256,7 +256,7 @@ function performSubsplit($branch, $subsplitList, $git)
     }
 
     $command = sprintf('rm -rf %s/.subsplit/.git/subtree-cache', realpath(getcwd()));
-    echo date('[Y-m-d H:i:s] ') . "EXECUTING:\n$command\n";
+    emitMessage("EXECUTING:\n%s", [$command]);
     passthru($command);
 
     if (0 != $return) {
@@ -268,6 +268,19 @@ function performSubsplit($branch, $subsplitList, $git)
 }
 
 /**
+ * Present a message
+ * 
+ * @param string $message 
+ * @param array $params 
+ */
+function emitMessage($message, array $params = [])
+{
+    $message = '[%s] ' . $message . "\n";
+    array_unshift($params, date('Y-m-d H:i:s'));
+    vprintf($message, $params);
+}
+
+/**
  * Exit with error status 2, and provide a message
  * 
  * @param string $message 
@@ -275,8 +288,6 @@ function performSubsplit($branch, $subsplitList, $git)
  */
 function exitWithError($message, array $params = [])
 {
-    $message = '[%s] ' . $message . "\n";
-    array_unshift($params, date('Y-m-d H:i:s'));
-    vprintf($message, $params);
+    emitMessage($message, $params);
     exit(2);
 }
