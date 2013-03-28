@@ -46,3 +46,16 @@ You will need to create the following files in `cache/`:
   process in a cronjob.)
 
 These files are intentionally left out of version control.
+
+Running as a cronjob
+--------------------
+
+To run this as a cronjob, I recommend a cronjob similar to the one below:
+
+```crontab
+0 0,3,6,9,12,15,18,21 * * * source $HOME/.zshrc && (touch path/to/subsplit/start ; (php path/to/subsplit/bin/update-repos.php 2>&1 | tee -a path/to/subsplit/publish.log) ; touch path/to/subsplit/end)
+```
+
+The above ensures that your git environment settings are properly sourced, and
+also provides a record of when a job began and ended. Finally, a log file is
+appended, so that you can review execution details later.
