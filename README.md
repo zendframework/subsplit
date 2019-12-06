@@ -1,6 +1,10 @@
 ZF2 Subsplits
 =============
 
+> ## Repository abandoned 2019-12-05
+>
+> This repository is no longer maintained.
+
 This repository provides functionality for creating and updating individual
 component repositories based off the master ZF2 repository.
 
